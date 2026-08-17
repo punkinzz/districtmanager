@@ -11,9 +11,7 @@ namespace DistrictManager
     {
         public static ILog log = LogManager.GetLogger($"{nameof(DistrictManager)}.{nameof(Mod)}").SetShowsErrorsInUI(false);
 
-        // Exposed so DistrictOverviewUISystem can read/watch the Enabled toggle - ECS systems are
-        // created independently of mod load order, so this can briefly be null right after the
-        // world boots; callers must null-check.
+        // can be null briefly right after boot - null-check on the caller side
         public static Setting Instance { get; private set; }
 
         public void OnLoad(UpdateSystem updateSystem)

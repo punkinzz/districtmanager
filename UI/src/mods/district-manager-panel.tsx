@@ -14,16 +14,9 @@ const DISTRICTS_POLL_MS = 2000;
 const panelOpen$ = bindValue<boolean>(GROUP, "panelOpen", false);
 const enabled$ = bindValue<boolean>(GROUP, "enabled", true);
 
-// Districts are pulled by polling rather than the usual useValue(bindValue(...)) subscription
-// pattern used for panelOpen/enabled above. Reported symptom: right after loading a city, the
-// panel would show "no districts" indefinitely, but a single fresh bindValue().value read (done
-// manually, outside the component) always returned the real current data, and a full page reload
-// always fixed it going forward. That points to the module-level subscription occasionally
-// missing its first real update - plausibly because this UI bundle can finish evaluating before
-// DistrictOverviewUISystem.OnCreate has registered the "districts" binding on the C# side, right
-// as a city is loading. Polling a *fresh* bindValue() call each tick sidesteps that: each read
-// gets the real current value directly rather than depending on a subscription's update history,
-// so it can't get stuck the same way. See NOTES.md.
+// polling instead of the usual useValue(bindValue(...)) pattern - the subscription sometimes
+// missed its first update right after a city loads and got stuck on "no districts". A fresh
+// bindValue() read each tick doesn't have that problem.
 function readDistrictsOnce(): DistrictInfo[] {
     const binding = bindValue<DistrictInfo[]>(GROUP, "districts", []);
     const value = binding.value;
@@ -58,12 +51,8 @@ interface ChipListRowProps {
     emptyText: string;
 }
 
-// Renders a label + a wrapping row of "chips" instead of one long joined string in a single
-// flex row - a district with many services/policies was overflowing the panel width and
-// breaking the layout, since this engine's flex items don't shrink or wrap by default (no `gap`
-// either, so chip spacing is margin-based like everywhere else in this file). Chips with an
-// onClick (services, navigable to their building) get a pointer cursor and hover highlight;
-// plain ones (policies, nothing to navigate to) don't.
+// wraps long lists as individual chips instead of one joined string that overflows the panel
+// (flex items don't wrap by default in this engine). clickable ones get a hover highlight.
 const ChipListRow = ({ label, items, emptyText }: ChipListRowProps) => (
     <div className={styles.chipListRow}>
         <div className={styles.chipListLabel}>{label}</div>
@@ -92,8 +81,7 @@ interface DistrictRowProps {
     onToggle: () => void;
 }
 
-// Each district starts collapsed, showing just its name and happiness. Clicking the header
-// (or its chevron) expands it to reveal population/policies/services/complaints.
+// starts collapsed - click the header to expand
 const DistrictRow = ({ district, expanded, onToggle }: DistrictRowProps) => {
     const activePolicyNames = district.policies.map((p) => p.name);
 
@@ -164,9 +152,6 @@ const DistrictRow = ({ district, expanded, onToggle }: DistrictRowProps) => {
     );
 };
 
-// Floating panel appended to the "Game" hook target (see index.tsx). Only actually mounts its
-// contents while the toolbar button has it open - the binding refresh on the C# side is also
-// gated on this same open state, so there's no cost while closed.
 export const DistrictManagerPanel = () => {
     const panelOpen = useValue(panelOpen$);
     const enabled = useValue(enabled$);
@@ -174,8 +159,7 @@ export const DistrictManagerPanel = () => {
     const [rawDistricts, setRawDistricts] = useState<DistrictInfo[]>(() => readDistrictsOnce());
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Keyed by district entity index. Absent (or false) = collapsed - every district starts
-    // collapsed, matching the "minimized by default" request.
+    // keyed by district entity index, absent/false = collapsed
     const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
     useEffect(() => {
@@ -200,12 +184,8 @@ export const DistrictManagerPanel = () => {
         }
         setIsRefreshing(true);
         trigger(GROUP, "refresh");
-        // Give the C# recompute a moment to land, then pull it immediately rather than waiting
-        // for the next DISTRICTS_POLL_MS tick.
-        setTimeout(() => setRawDistricts(readDistrictsOnce()), 150);
-        // The actual refresh is fast enough (150ms) that the indicator would barely be visible -
-        // hold it a bit longer than that so clicking it actually reads as having done something.
-        setTimeout(() => setIsRefreshing(false), 800);
+        setTimeout(() => setRawDistricts(readDistrictsOnce()), 150); // give the C# recompute a moment to land
+        setTimeout(() => setIsRefreshing(false), 800); // hold the spinner a bit so it's visible
     };
 
     const toggleOne = (index: number) => {
@@ -224,8 +204,7 @@ export const DistrictManagerPanel = () => {
 
     return (
         <Portal>
-            {/* Dimmed full-screen backdrop makes this read as a modal popup rather than a
-                docked tray - clicking outside the panel closes it, clicking inside doesn't. */}
+            {/* dimmed backdrop so this reads as a modal, not a docked tray */}
             <div className={styles.backdrop} onClick={close}>
                 <Panel
                     className={styles.modal}
@@ -233,12 +212,6 @@ export const DistrictManagerPanel = () => {
                     onClose={close}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    {/* The refresh button lives here rather than in the `header` prop above.
-                        Originally moved it after a test seemed to show onClick doesn't fire for
-                        content passed through `header` - that test turned out to be a false
-                        negative (see NOTES.md, "Correction to the refresh button diagnosis"), so
-                        `header` may well have worked fine too. Left it here since it works and
-                        moving it back has no upside. */}
                     <div className={styles.toolbarRow}>
                         {districts.length > 0 && (
                             <div className={styles.expandCollapseRow}>

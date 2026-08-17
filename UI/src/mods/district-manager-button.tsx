@@ -8,8 +8,7 @@ const GROUP = "districtManager";
 const panelOpen$ = bindValue<boolean>(GROUP, "panelOpen", false);
 const enabled$ = bindValue<boolean>(GROUP, "enabled", true);
 
-// Toolbar icon button appended to GameTopLeft (see index.tsx) that toggles the district panel.
-// Hidden entirely when the mod's Options > Enable District Manager toggle is off.
+// toggles the district panel; hidden if the mod is disabled in Options
 export const DistrictManagerButton = () => {
     const panelOpen = useValue(panelOpen$);
     const enabled = useValue(enabled$);

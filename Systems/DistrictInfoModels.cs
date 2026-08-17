@@ -4,11 +4,6 @@ using Unity.Entities;
 
 namespace DistrictManager.Systems
 {
-    /// <summary>
-    /// A single policy's state as shown in the district panel.
-    /// Mirrors the shape of the vanilla game's PoliciesUISystem.UIPolicy, simplified to
-    /// just what the panel needs (name, active state, and slider/adjustment value).
-    /// </summary>
     public struct PolicyInfo : IJsonWritable
     {
         public string name;
@@ -31,10 +26,7 @@ namespace DistrictManager.Systems
         }
     }
 
-    /// <summary>
-    /// A city service building associated with a district - name plus its own entity, so the UI
-    /// can navigate the camera to it (same mechanism as the district's own "show on map" pin).
-    /// </summary>
+    // name + entity so the UI can jump the camera to it
     public struct ServiceInfo : IJsonWritable
     {
         public string name;
@@ -51,12 +43,6 @@ namespace DistrictManager.Systems
         }
     }
 
-    /// <summary>
-    /// Everything the panel shows for one district: name, population, average happiness,
-    /// active policies, associated (explicitly district-assigned) service buildings, and a
-    /// short list of top complaints. See districtmanager/NOTES.md for exactly how each of
-    /// these is derived and what's simplified relative to the game's own internal panels.
-    /// </summary>
     public struct DistrictInfo : IJsonWritable
     {
         public Entity entity;

@@ -18,18 +18,9 @@ using UnityEngine.Scripting;
 
 namespace DistrictManager.Systems
 {
-    /// <summary>
-    /// Backs the "District Manager" toolbar button and panel: gathers, for every real district
-    /// in the city, its name, population, average happiness, active policies, explicitly
-    /// assigned services, and a short list of top complaints, and exposes it to the UI over a
-    /// single value binding.
-    ///
-    /// All ECS types used here were confirmed by decompiling the installed Game.dll rather than
-    /// guessed - see districtmanager/NOTES.md for the source references and the simplifications
-    /// called out below. Note: this project targets net48/C# 9 (set by the toolchain's
-    /// Mod.props), so newer BCL conveniences like Dictionary.GetValueOrDefault aren't available -
-    /// see the small GetOrZero helpers below instead.
-    /// </summary>
+    // Backs the toolbar button + panel. Gathers per-district name/population/happiness/policies/
+    // services/complaints and pushes it to the UI as one binding.
+    // (targeting net48/C# 9 here, so no Dictionary.GetValueOrDefault - hence the GetOrZero helpers)
     public partial class DistrictOverviewUISystem : UISystemBase
     {
         public const string kGroup = "districtManager";
@@ -66,13 +57,12 @@ namespace DistrictManager.Systems
             m_PrefabSystem = World.GetOrCreateSystemManaged<PrefabSystem>();
             m_NameSystem = World.GetOrCreateSystemManaged<NameSystem>();
 
-            // All real (non-preview/ghost) districts - same query the vanilla DistrictsSection uses.
+            // all real districts (no previews/ghosts)
             m_DistrictQuery = GetEntityQuery(
                 ComponentType.ReadOnly<District>(),
                 ComponentType.Exclude<Temp>());
 
-            // Residential buildings tagged with which district they're currently in - same shape
-            // as the vanilla AverageHappinessSection's m_DistrictBuildingQuery.
+            // residential buildings tagged with their current district
             m_DistrictBuildingQuery = GetEntityQuery(
                 ComponentType.ReadOnly<Building>(),
                 ComponentType.ReadOnly<CurrentDistrict>(),
@@ -81,7 +71,7 @@ namespace DistrictManager.Systems
                 ComponentType.Exclude<Temp>(),
                 ComponentType.Exclude<Deleted>());
 
-            // Policy prefabs that can apply to a district (mirrors PoliciesUISystem.m_DistrictPoliciesQuery).
+            // policy prefabs that can apply to a district
             m_DistrictPolicyPrefabQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new ComponentType[] { ComponentType.ReadOnly<PolicyData>() },
@@ -92,18 +82,12 @@ namespace DistrictManager.Systems
                 },
             });
 
-            // City service buildings actually assigned to a district via the vanilla "restrict
-            // this service building to a district" tool. Confirmed by decompile that
-            // Game.Areas.ServiceDistrict is IBufferElementData { Entity m_District } - a real
-            // per-building list of the district(s) it's been explicitly assigned to, not just a
-            // marker. Association is read from that buffer's actual entries in
-            // RefreshDistrictsInternal, NOT from the building's own CurrentDistrict (physical
-            // location) - a building can sit inside a district's borders without being assigned
-            // to serve it, and this list must reflect the latter, not the former. This query only
-            // needs to pre-filter to buildings that carry the buffer type at all (CityServiceUpkeep
-            // narrows it to actual service buildings, matching what the assignment tool targets);
-            // an entity can have the component with zero entries, so an empty buffer must still be
-            // checked and skipped per-building, not assumed away by this query. See NOTES.md.
+            // Service buildings actually assigned to a district via the game's own "restrict to
+            // district" tool. ServiceDistrict is a per-building buffer of assigned districts, not
+            // just a marker - most buildings have the buffer but it's empty, so RefreshDistrictsInternal
+            // still has to check length, not just presence. Deliberately NOT using CurrentDistrict
+            // (physical location) here - a building inside a district's borders isn't necessarily
+            // assigned to serve it.
             m_DistrictServiceBuildingQuery = GetEntityQuery(
                 ComponentType.ReadOnly<Building>(),
                 ComponentType.ReadOnly<CityServiceUpkeep>(),
@@ -111,12 +95,8 @@ namespace DistrictManager.Systems
                 ComponentType.Exclude<Temp>(),
                 ComponentType.Exclude<Deleted>());
 
-            // "Assets" - parks and signature/landmark buildings physically located in a district.
-            // These are never district-assignable (no ServiceDistrict buffer at all), which is
-            // exactly why they were wrongly showing up in Services before this was split out -
-            // Park/Signature buildings still carry CityServiceUpkeep in some cases, so the
-            // None: ServiceDistrict exclusion below is what keeps this list and the Services list
-            // from double-counting the same building.
+            // Assets: parks/signature buildings physically in a district. Excluding ServiceDistrict
+            // so these don't double up with Services (some parks carry CityServiceUpkeep too).
             m_DistrictAssetBuildingQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new ComponentType[] { ComponentType.ReadOnly<Building>(), ComponentType.ReadOnly<CurrentDistrict>() },
@@ -142,20 +122,14 @@ namespace DistrictManager.Systems
 
             AddBinding(m_PanelOpen = new ValueBinding<bool>(kGroup, "panelOpen", false));
 
-            // Reflects Setting.Enabled from the mod's Options page - the TS side hides the
-            // toolbar button entirely (and the panel force-closes) when this is false.
+            // mirrors Setting.Enabled - TS side hides the toolbar button when false
             AddBinding(m_Enabled = new ValueBinding<bool>(kGroup, "enabled", Mod.Instance?.Enabled ?? true));
 
             AddBinding(new TriggerBinding(kGroup, "togglePanel", TogglePanel));
-
-            // Manual refresh - lets the player force an update without waiting for the
-            // kRefreshIntervalSeconds tick while the panel's already open.
             AddBinding(new TriggerBinding(kGroup, "refresh", ManualRefresh));
         }
 
-        // Without this, m_Districts (and whatever the JS side last saw) would survive a save
-        // load untouched, showing the previous city's districts in the new one - the same reason
-        // the vanilla PoliciesUISystem clears its own cached lists here.
+        // clear cached districts on save load, otherwise the old city's data lingers
         [Preserve]
         protected override void OnGameLoaded(Context serializationContext)
         {
@@ -194,9 +168,8 @@ namespace DistrictManager.Systems
             base.OnDestroy();
         }
 
-        // Mod.Instance may not exist yet when this system's OnCreate runs - ECS auto-creates
-        // systems independently of Mod.OnLoad's own ordering - so the subscription happens
-        // lazily here on the first update where it's available instead.
+        // Mod.Instance can be null when OnCreate runs (ECS creates systems on its own schedule),
+        // so subscribe lazily on first update instead.
         private void TrySubscribeToSettings()
         {
             if (m_SubscribedToSettings || Mod.Instance == null)
@@ -245,8 +218,7 @@ namespace DistrictManager.Systems
 
             if (nowOpen)
             {
-                // Refresh immediately on open rather than waiting for the next tick, so the
-                // panel never shows a frame of stale/empty data.
+                // refresh right away instead of waiting for the next tick
                 m_RefreshTimer = 0f;
                 RefreshDistricts();
                 m_DistrictsBinding.Update();
@@ -295,10 +267,8 @@ namespace DistrictManager.Systems
             }
             catch (Exception ex)
             {
-                // Errors here are otherwise silent (Mod.log suppresses UI error popups), which
-                // previously meant a single bad entry could quietly leave the panel empty. Log
-                // it so it's actually diagnosable, and leave m_Districts cleared rather than
-                // half-populated.
+                // Mod.log suppresses UI error popups, so log explicitly or a bad entry just
+                // leaves the panel silently empty
                 Mod.log.Error($"DistrictOverviewUISystem.RefreshDistricts failed: {ex}");
                 m_Districts.Clear();
             }
@@ -309,7 +279,7 @@ namespace DistrictManager.Systems
             var districtEntities = m_DistrictQuery.ToEntityArray(Allocator.Temp);
             var policyPrefabEntities = m_DistrictPolicyPrefabQuery.ToEntityArray(Allocator.Temp);
 
-            // --- Pass 1: aggregate per-district happiness/population/crime/garbage from buildings ---
+            // aggregate per-district happiness/population/crime/garbage from buildings
             var happinessSum = new Dictionary<Entity, long>();
             var citizenCount = new Dictionary<Entity, int>();
             var crimeSum = new Dictionary<Entity, float>();
@@ -358,9 +328,7 @@ namespace DistrictManager.Systems
                             continue;
                         }
 
-                        // Note: unlike the vanilla AverageHappinessSection, this doesn't exclude
-                        // dead/departed citizens via HealthProblem - a minor, documented v1
-                        // simplification (see NOTES.md).
+                        // doesn't exclude dead/departed citizens like the vanilla panel does - fine for now
                         happinessSum[district] = GetOrZero(happinessSum, district) + citizenData.Happiness;
                         citizenCount[district] = GetOrZero(citizenCount, district) + 1;
                     }
@@ -368,39 +336,26 @@ namespace DistrictManager.Systems
             }
             buildingEntities.Dispose();
 
-            // City-wide per-building averages, used to flag a district's crime/garbage as
-            // "above average" rather than against an arbitrary absolute number.
             float cityAvgCrimePerBuilding = SafeAverage(SumAll(crimeSum), SumAll(buildingCount));
             float cityAvgGarbagePerBuilding = SafeAverage(SumAll(garbageSum), SumAll(buildingCount));
 
-            // --- Pass 2: city service buildings actually assigned to each district ---
+            // service buildings actually assigned to a district
             var servicesByDistrict = new Dictionary<Entity, List<ServiceInfo>>();
             var serviceBuildingEntities = m_DistrictServiceBuildingQuery.ToEntityArray(Allocator.Temp);
             foreach (var building in serviceBuildingEntities)
             {
-                // The query only guarantees the buffer *type* is present - most service buildings
-                // have never been assigned to a district via the vanilla tool, so their buffer is
-                // simply empty. Those correctly show under no district at all, in no section of
-                // the panel (this is deliberate - see the query comment in OnCreate).
+                // most service buildings carry the buffer but it's never been filled in - skip those
                 if (!EntityManager.TryGetBuffer<ServiceDistrict>(building, true, out var assignedDistricts)
                     || assignedDistricts.Length == 0)
                 {
                     continue;
                 }
 
-                // Service buildings (unlike zoned/addressed ones) generally render via their
-                // prefab's generic title - e.g. every "Small Medical Clinic" in the city shows
-                // that exact same string, not a per-building name. That reads as if the same
-                // building were showing up under multiple districts, when really it's two
-                // distinct buildings sharing a non-unique label. Appending the entity index
-                // disambiguates them; BuildingUtils.GetAddress could give a nicer
-                // "(Road name, number)" suffix instead, but needs more verification of which
-                // component it depends on before relying on it.
+                // service buildings share a generic prefab title (every "Small Medical Clinic" looks
+                // the same), so append the entity index or two different buildings look like one
                 string buildingName = $"{m_NameSystem.GetRenderedLabelName(building)} (#{building.Index})";
 
-                // A building's assignment buffer can list more than one district (the tool allows
-                // assigning a service building to serve several districts at once) - list it under
-                // every district it's actually assigned to, not just one.
+                // a building can be assigned to more than one district at once
                 for (int i = 0; i < assignedDistricts.Length; i++)
                 {
                     Entity district = assignedDistricts[i].m_District;
@@ -419,9 +374,7 @@ namespace DistrictManager.Systems
             }
             serviceBuildingEntities.Dispose();
 
-            // --- Pass 2b: parks/signature buildings physically located in each district ---
-            // (kept separate from Services above, since these are never district-assignable -
-            // see the query comment in OnCreate and NOTES.md).
+            // parks/signature buildings physically located in each district
             var assetsByDistrict = new Dictionary<Entity, List<ServiceInfo>>();
             var assetBuildingEntities = m_DistrictAssetBuildingQuery.ToEntityArray(Allocator.Temp);
             foreach (var building in assetBuildingEntities)
@@ -442,7 +395,7 @@ namespace DistrictManager.Systems
             }
             assetBuildingEntities.Dispose();
 
-            // --- Pass 3: assemble the final per-district entries ---
+            // assemble the final per-district entries
             foreach (var district in districtEntities)
             {
                 int population = GetOrZero(citizenCount, district);
@@ -487,14 +440,11 @@ namespace DistrictManager.Systems
             districtEntities.Dispose();
         }
 
-        // A moderate baseline severity for "no services" so it can be ranked against the other,
-        // numeric complaint candidates below - a documented judgment call, not a measured value.
+        // eyeballed baseline so "no services" can be ranked against the other complaint types below
         private const float kNoServicesSeverity = 20f;
 
-        // Only the single worst complaint is shown (per user request), ranked by a severity score
-        // that's comparable across categories even though the underlying units aren't: happiness
-        // is a 0-100 gap below threshold, crime/garbage are a percentage above the city average,
-        // and "no services" is a fixed baseline (see kNoServicesSeverity above).
+        // only the single worst complaint is shown, scored on a rough comparable scale even
+        // though the units differ (happiness gap, % above city average, fixed baseline)
         private static List<string> BuildTopComplaint(
             int population,
             int averageHappiness,
@@ -552,10 +502,7 @@ namespace DistrictManager.Systems
 
             foreach (var policyPrefabEntity in policyPrefabEntities)
             {
-                // Read visibility straight off the ECS component rather than going through
-                // PrefabSystem.TryGetPrefab<PolicyPrefab> - PolicyPrefab is an abstract class and
-                // resolving it generically per-entity isn't worth the risk when the component
-                // data has everything we need already.
+                // reading straight off the component - PolicyPrefab is abstract, not worth resolving via PrefabSystem
                 if (!EntityManager.TryGetComponent<PolicyData>(policyPrefabEntity, out var policyData))
                 {
                     continue;

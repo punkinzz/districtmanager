@@ -7,18 +7,18 @@
 	<ShortDescription Value="See every district's happiness, top complaint, assigned services, assets, and active policies at a glance" />
 	<!--Long description of the mod. Single line or multi line. Supports minimal markdown subset-->
 	<LongDescription>
-**District Manager** adds a map-pin button to the toolbar that opens a panel listing every district in your city, all in one place.
+District Manager adds a map-pin button to the toolbar. Click it and you get a panel listing every district in your city in one place.
 
-For each district, at a glance:
-- **Population** and **average citizen happiness** (color-coded)
-- The single **biggest complaint** currently affecting that district
-- **Services** actually assigned to it - only buildings you've explicitly restricted to that district with the game's own "assign district" tool, not just anything physically nearby
-- **Assets** located in the district - parks and signature/landmark buildings
-- **Policies** currently active in that district
+Each district's entry shows:
+- Population and average citizen happiness, color-coded
+- Its single biggest current complaint
+- Services assigned to the district through the game's own "assign district" tool, not buildings that just happen to be nearby
+- Parks and any signature or landmark buildings in the district
+- Whatever policies are currently active there
 
-Districts are listed alphabetically and start collapsed - expand one, or use Expand All / Collapse All. Click the pin next to a district name, or any service/asset chip, to jump the camera straight to it on the map. A manual refresh button forces an update on demand, and the mod can be toggled on/off any time from Options &gt; Mods &gt; District Manager.
+Districts sort alphabetically and start collapsed, so expand the ones you care about, or use Expand All / Collapse All. Click a district's pin, or any service or asset chip, and the camera jumps straight to it on the map. There's a manual refresh button if you want to force an update, and you can turn the mod on or off anytime from Options &gt; Mods &gt; District Manager.
 
-Read-only: it only displays existing city data and never changes how your city plays. Safe to add to or remove from an existing save at any time.
+It's read-only: it just shows what's already in your city and doesn't change anything.
 	</LongDescription>
 	<!--Thumbnail-->
 	<Thumbnail Value="Properties/Thumbnail.png" />
