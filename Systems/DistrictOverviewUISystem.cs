@@ -10,26 +10,24 @@ using Game.City;
 using Game.Common;
 using Game.Policies;
 using Game.Prefabs;
+using Game.Simulation;
 using Game.Tools;
 using Game.UI;
+using Game.UI.InGame;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
+using Unity.Mathematics;
 using UnityEngine.Scripting;
 
 namespace DistrictManager.Systems
 {
-    // Backs the toolbar button + panel. Gathers per-district name/population/happiness/policies/
-    // services/complaints and pushes it to the UI as one binding.
-    // (targeting net48/C# 9 here, so no Dictionary.GetValueOrDefault - hence the GetOrZero helpers)
     public partial class DistrictOverviewUISystem : UISystemBase
     {
         public const string kGroup = "districtManager";
 
-        // Only refresh the (moderately expensive) district scan on this cadence, and only while
-        // the panel is actually open - no point paying for it while the player has it closed.
         private const float kRefreshIntervalSeconds = 2f;
 
-        // Below this average happiness (0-100), a district is called out for it in complaints.
         private const int kLowHappinessThreshold = 45;
 
         private EntityQuery m_DistrictQuery;
@@ -38,8 +36,24 @@ namespace DistrictManager.Systems
         private EntityQuery m_DistrictServiceBuildingQuery;
         private EntityQuery m_DistrictAssetBuildingQuery;
 
+        private EntityQuery m_CitizenHappinessParameterQuery;
+        private EntityQuery m_GarbageParameterQuery;
+        private EntityQuery m_HealthcareParameterQuery;
+        private EntityQuery m_ParkParameterQuery;
+        private EntityQuery m_EducationParameterQuery;
+        private EntityQuery m_TelecomParameterQuery;
+        private EntityQuery m_HappinessFactorParameterQuery;
+        private EntityQuery m_ServiceFeeParameterQuery;
+
         private PrefabSystem m_PrefabSystem;
         private NameSystem m_NameSystem;
+        private GroundPollutionSystem m_GroundPollutionSystem;
+        private NoisePollutionSystem m_NoisePollutionSystem;
+        private AirPollutionSystem m_AirPollutionSystem;
+        private TelecomCoverageSystem m_TelecomCoverageSystem;
+        private TaxSystem m_TaxSystem;
+        private CitySystem m_CitySystem;
+        private LocalEffectSystem m_LocalEffectSystem;
 
         private readonly List<DistrictInfo> m_Districts = new List<DistrictInfo>();
         private GetterValueBinding<List<DistrictInfo>> m_DistrictsBinding;
@@ -56,13 +70,18 @@ namespace DistrictManager.Systems
 
             m_PrefabSystem = World.GetOrCreateSystemManaged<PrefabSystem>();
             m_NameSystem = World.GetOrCreateSystemManaged<NameSystem>();
+            m_GroundPollutionSystem = World.GetOrCreateSystemManaged<GroundPollutionSystem>();
+            m_NoisePollutionSystem = World.GetOrCreateSystemManaged<NoisePollutionSystem>();
+            m_AirPollutionSystem = World.GetOrCreateSystemManaged<AirPollutionSystem>();
+            m_TelecomCoverageSystem = World.GetOrCreateSystemManaged<TelecomCoverageSystem>();
+            m_TaxSystem = World.GetOrCreateSystemManaged<TaxSystem>();
+            m_CitySystem = World.GetOrCreateSystemManaged<CitySystem>();
+            m_LocalEffectSystem = World.GetOrCreateSystemManaged<LocalEffectSystem>();
 
-            // all real districts (no previews/ghosts)
             m_DistrictQuery = GetEntityQuery(
                 ComponentType.ReadOnly<District>(),
                 ComponentType.Exclude<Temp>());
 
-            // residential buildings tagged with their current district
             m_DistrictBuildingQuery = GetEntityQuery(
                 ComponentType.ReadOnly<Building>(),
                 ComponentType.ReadOnly<CurrentDistrict>(),
@@ -71,7 +90,6 @@ namespace DistrictManager.Systems
                 ComponentType.Exclude<Temp>(),
                 ComponentType.Exclude<Deleted>());
 
-            // policy prefabs that can apply to a district
             m_DistrictPolicyPrefabQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new ComponentType[] { ComponentType.ReadOnly<PolicyData>() },
@@ -82,12 +100,6 @@ namespace DistrictManager.Systems
                 },
             });
 
-            // Service buildings actually assigned to a district via the game's own "restrict to
-            // district" tool. ServiceDistrict is a per-building buffer of assigned districts, not
-            // just a marker - most buildings have the buffer but it's empty, so RefreshDistrictsInternal
-            // still has to check length, not just presence. Deliberately NOT using CurrentDistrict
-            // (physical location) here - a building inside a district's borders isn't necessarily
-            // assigned to serve it.
             m_DistrictServiceBuildingQuery = GetEntityQuery(
                 ComponentType.ReadOnly<Building>(),
                 ComponentType.ReadOnly<CityServiceUpkeep>(),
@@ -95,8 +107,15 @@ namespace DistrictManager.Systems
                 ComponentType.Exclude<Temp>(),
                 ComponentType.Exclude<Deleted>());
 
-            // Assets: parks/signature buildings physically in a district. Excluding ServiceDistrict
-            // so these don't double up with Services (some parks carry CityServiceUpkeep too).
+            m_CitizenHappinessParameterQuery = GetEntityQuery(ComponentType.ReadOnly<CitizenHappinessParameterData>());
+            m_GarbageParameterQuery = GetEntityQuery(ComponentType.ReadOnly<GarbageParameterData>());
+            m_HealthcareParameterQuery = GetEntityQuery(ComponentType.ReadOnly<HealthcareParameterData>());
+            m_ParkParameterQuery = GetEntityQuery(ComponentType.ReadOnly<ParkParameterData>());
+            m_EducationParameterQuery = GetEntityQuery(ComponentType.ReadOnly<EducationParameterData>());
+            m_TelecomParameterQuery = GetEntityQuery(ComponentType.ReadOnly<TelecomParameterData>());
+            m_HappinessFactorParameterQuery = GetEntityQuery(ComponentType.ReadOnly<HappinessFactorParameterData>());
+            m_ServiceFeeParameterQuery = GetEntityQuery(ComponentType.ReadOnly<ServiceFeeParameterData>());
+
             m_DistrictAssetBuildingQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new ComponentType[] { ComponentType.ReadOnly<Building>(), ComponentType.ReadOnly<CurrentDistrict>() },
@@ -122,14 +141,12 @@ namespace DistrictManager.Systems
 
             AddBinding(m_PanelOpen = new ValueBinding<bool>(kGroup, "panelOpen", false));
 
-            // mirrors Setting.Enabled - TS side hides the toolbar button when false
             AddBinding(m_Enabled = new ValueBinding<bool>(kGroup, "enabled", Mod.Instance?.Enabled ?? true));
 
             AddBinding(new TriggerBinding(kGroup, "togglePanel", TogglePanel));
             AddBinding(new TriggerBinding(kGroup, "refresh", ManualRefresh));
         }
 
-        // clear cached districts on save load, otherwise the old city's data lingers
         [Preserve]
         protected override void OnGameLoaded(Context serializationContext)
         {
@@ -168,8 +185,6 @@ namespace DistrictManager.Systems
             base.OnDestroy();
         }
 
-        // Mod.Instance can be null when OnCreate runs (ECS creates systems on its own schedule),
-        // so subscribe lazily on first update instead.
         private void TrySubscribeToSettings()
         {
             if (m_SubscribedToSettings || Mod.Instance == null)
@@ -218,7 +233,6 @@ namespace DistrictManager.Systems
 
             if (nowOpen)
             {
-                // refresh right away instead of waiting for the next tick
                 m_RefreshTimer = 0f;
                 RefreshDistricts();
                 m_DistrictsBinding.Update();
@@ -267,8 +281,6 @@ namespace DistrictManager.Systems
             }
             catch (Exception ex)
             {
-                // Mod.log suppresses UI error popups, so log explicitly or a bad entry just
-                // leaves the panel silently empty
                 Mod.log.Error($"DistrictOverviewUISystem.RefreshDistricts failed: {ex}");
                 m_Districts.Clear();
             }
@@ -279,12 +291,59 @@ namespace DistrictManager.Systems
             var districtEntities = m_DistrictQuery.ToEntityArray(Allocator.Temp);
             var policyPrefabEntities = m_DistrictPolicyPrefabQuery.ToEntityArray(Allocator.Temp);
 
-            // aggregate per-district happiness/population/crime/garbage from buildings
             var happinessSum = new Dictionary<Entity, long>();
             var citizenCount = new Dictionary<Entity, int>();
-            var crimeSum = new Dictionary<Entity, float>();
-            var garbageSum = new Dictionary<Entity, long>();
-            var buildingCount = new Dictionary<Entity, int>();
+            var factorSum = new Dictionary<Entity, int[]>();
+            var factorCount = new Dictionary<Entity, int[]>();
+
+            var citizenHappinessParameters = m_CitizenHappinessParameterQuery.GetSingleton<CitizenHappinessParameterData>();
+            var garbageParameters = m_GarbageParameterQuery.GetSingleton<GarbageParameterData>();
+            var healthcareParameters = m_HealthcareParameterQuery.GetSingleton<HealthcareParameterData>();
+            var parkParameters = m_ParkParameterQuery.GetSingleton<ParkParameterData>();
+            var educationParameters = m_EducationParameterQuery.GetSingleton<EducationParameterData>();
+            var telecomParameters = m_TelecomParameterQuery.GetSingleton<TelecomParameterData>();
+            var serviceFeeParameters = m_ServiceFeeParameterQuery.GetSingleton<ServiceFeeParameterData>();
+            var happinessFactorParameters = EntityManager.GetBuffer<HappinessFactorParameterData>(
+                m_HappinessFactorParameterQuery.GetSingletonEntity(), true);
+
+            var groundPollutionMap = m_GroundPollutionSystem.GetData(true, out var groundPollutionDeps).m_Buffer;
+            var noisePollutionMap = m_NoisePollutionSystem.GetData(true, out var noisePollutionDeps).m_Buffer;
+            var airPollutionMap = m_AirPollutionSystem.GetData(true, out var airPollutionDeps).m_Buffer;
+            var telecomCoverage = m_TelecomCoverageSystem.GetData(true, out var telecomCoverageDeps);
+            groundPollutionDeps.Complete();
+            noisePollutionDeps.Complete();
+            airPollutionDeps.Complete();
+            telecomCoverageDeps.Complete();
+
+            var taxRates = m_TaxSystem.GetTaxRates();
+            Entity cityEntity = m_CitySystem.City;
+            var cityFees = EntityManager.GetBuffer<ServiceFee>(cityEntity, true);
+            float relativeElectricityFee = ServiceFeeSystem.GetFee(PlayerResource.Electricity, cityFees) / serviceFeeParameters.m_ElectricityFee.m_Default;
+            float relativeWaterFee = ServiceFeeSystem.GetFee(PlayerResource.Water, cityFees) / serviceFeeParameters.m_WaterFee.m_Default;
+
+            var localEffectData = m_LocalEffectSystem.GetReadData(out var localEffectDeps);
+            localEffectDeps.Complete();
+
+            var prefabRefLookup = GetComponentLookup<PrefabRef>(true);
+            var spawnableBuildingLookup = GetComponentLookup<SpawnableBuildingData>(true);
+            var buildingPropertyLookup = GetComponentLookup<BuildingPropertyData>(true);
+            var cityModifierLookup = GetBufferLookup<CityModifier>(true);
+            var buildingLookup = GetComponentLookup<Building>(true);
+            var electricityConsumerLookup = GetComponentLookup<ElectricityConsumer>(true);
+            var waterConsumerLookup = GetComponentLookup<WaterConsumer>(true);
+            var serviceCoverageLookup = GetBufferLookup<Game.Net.ServiceCoverage>(true);
+            var lockedLookup = GetComponentLookup<Locked>(true);
+            var transformLookup = GetComponentLookup<Game.Objects.Transform>(true);
+            var garbageProducerLookup = GetComponentLookup<GarbageProducer>(true);
+            var crimeProducerLookup = GetComponentLookup<CrimeProducer>(true);
+            var mailProducerLookup = GetComponentLookup<MailProducer>(true);
+            var renterLookup = GetBufferLookup<Renter>(true);
+            var citizenLookup = GetComponentLookup<Citizen>(true);
+            var householdCitizenLookup = GetBufferLookup<HouseholdCitizen>(true);
+            var buildingDataLookup = GetComponentLookup<BuildingData>(true);
+
+            int factorCountPerBuilding = (int)BuildingHappinessFactor.Count;
+            var scratchFactors = new NativeArray<int2>(factorCountPerBuilding, Allocator.Temp);
 
             var buildingEntities = m_DistrictBuildingQuery.ToEntityArray(Allocator.Temp);
             foreach (var building in buildingEntities)
@@ -293,18 +352,6 @@ namespace DistrictManager.Systems
                 if (district == Entity.Null)
                 {
                     continue;
-                }
-
-                buildingCount[district] = GetOrZero(buildingCount, district) + 1;
-
-                if (EntityManager.TryGetComponent<CrimeProducer>(building, out var crime))
-                {
-                    crimeSum[district] = GetOrZero(crimeSum, district) + crime.m_Crime;
-                }
-
-                if (EntityManager.TryGetComponent<GarbageProducer>(building, out var garbage))
-                {
-                    garbageSum[district] = GetOrZero(garbageSum, district) + garbage.m_Garbage;
                 }
 
                 if (!EntityManager.TryGetBuffer<Renter>(building, true, out var renters))
@@ -328,34 +375,61 @@ namespace DistrictManager.Systems
                             continue;
                         }
 
-                        // doesn't exclude dead/departed citizens like the vanilla panel does - fine for now
                         happinessSum[district] = GetOrZero(happinessSum, district) + citizenData.Happiness;
                         citizenCount[district] = GetOrZero(citizenCount, district) + 1;
                     }
                 }
+
+                for (int k = 0; k < scratchFactors.Length; k++)
+                {
+                    scratchFactors[k] = default;
+                }
+
+                BuildingHappiness.GetResidentialBuildingHappinessFactors(
+                    cityEntity, taxRates, building, scratchFactors,
+                    ref prefabRefLookup, ref spawnableBuildingLookup, ref buildingPropertyLookup, ref cityModifierLookup,
+                    ref buildingLookup, ref electricityConsumerLookup, ref waterConsumerLookup, ref serviceCoverageLookup,
+                    ref lockedLookup, ref transformLookup, ref garbageProducerLookup, ref crimeProducerLookup,
+                    ref mailProducerLookup, ref renterLookup, ref citizenLookup, ref householdCitizenLookup,
+                    ref buildingDataLookup, ref localEffectData,
+                    citizenHappinessParameters, garbageParameters, healthcareParameters, parkParameters,
+                    educationParameters, telecomParameters, happinessFactorParameters,
+                    groundPollutionMap, noisePollutionMap, airPollutionMap, telecomCoverage,
+                    relativeElectricityFee, relativeWaterFee);
+
+                if (!factorSum.TryGetValue(district, out var districtFactorSum))
+                {
+                    districtFactorSum = new int[factorCountPerBuilding];
+                    factorSum[district] = districtFactorSum;
+                    factorCount[district] = new int[factorCountPerBuilding];
+                }
+                var districtFactorCount = factorCount[district];
+                for (int k = 0; k < scratchFactors.Length; k++)
+                {
+                    int2 factorValue = scratchFactors[k];
+                    if (factorValue.x <= 0)
+                    {
+                        continue;
+                    }
+                    districtFactorSum[k] += factorValue.y;
+                    districtFactorCount[k] += factorValue.x;
+                }
             }
+            scratchFactors.Dispose();
             buildingEntities.Dispose();
 
-            float cityAvgCrimePerBuilding = SafeAverage(SumAll(crimeSum), SumAll(buildingCount));
-            float cityAvgGarbagePerBuilding = SafeAverage(SumAll(garbageSum), SumAll(buildingCount));
-
-            // service buildings actually assigned to a district
             var servicesByDistrict = new Dictionary<Entity, List<ServiceInfo>>();
             var serviceBuildingEntities = m_DistrictServiceBuildingQuery.ToEntityArray(Allocator.Temp);
             foreach (var building in serviceBuildingEntities)
             {
-                // most service buildings carry the buffer but it's never been filled in - skip those
                 if (!EntityManager.TryGetBuffer<ServiceDistrict>(building, true, out var assignedDistricts)
                     || assignedDistricts.Length == 0)
                 {
                     continue;
                 }
 
-                // service buildings share a generic prefab title (every "Small Medical Clinic" looks
-                // the same), so append the entity index or two different buildings look like one
                 string buildingName = $"{m_NameSystem.GetRenderedLabelName(building)} (#{building.Index})";
 
-                // a building can be assigned to more than one district at once
                 for (int i = 0; i < assignedDistricts.Length; i++)
                 {
                     Entity district = assignedDistricts[i].m_District;
@@ -374,7 +448,6 @@ namespace DistrictManager.Systems
             }
             serviceBuildingEntities.Dispose();
 
-            // parks/signature buildings physically located in each district
             var assetsByDistrict = new Dictionary<Entity, List<ServiceInfo>>();
             var assetBuildingEntities = m_DistrictAssetBuildingQuery.ToEntityArray(Allocator.Temp);
             foreach (var building in assetBuildingEntities)
@@ -395,7 +468,6 @@ namespace DistrictManager.Systems
             }
             assetBuildingEntities.Dispose();
 
-            // assemble the final per-district entries
             foreach (var district in districtEntities)
             {
                 int population = GetOrZero(citizenCount, district);
@@ -415,12 +487,9 @@ namespace DistrictManager.Systems
                     assets = new List<ServiceInfo>();
                 }
 
-                int buildings = GetOrZero(buildingCount, district);
-                float avgCrime = SafeAverage(GetOrZero(crimeSum, district), buildings);
-                float avgGarbage = SafeAverage(GetOrZero(garbageSum, district), buildings);
-
-                var complaints = BuildTopComplaint(population, averageHappiness, avgCrime,
-                    cityAvgCrimePerBuilding, avgGarbage, cityAvgGarbagePerBuilding);
+                factorSum.TryGetValue(district, out var districtFactorSumFinal);
+                factorCount.TryGetValue(district, out var districtFactorCountFinal);
+                var complaints = BuildTopComplaint(population, averageHappiness, districtFactorSumFinal, districtFactorCountFinal);
 
                 m_Districts.Add(new DistrictInfo
                 {
@@ -440,39 +509,39 @@ namespace DistrictManager.Systems
             districtEntities.Dispose();
         }
 
-        // only the single worst complaint is shown, scored on a rough comparable scale even
-        // though the units differ (happiness gap, % above city average)
         private static List<string> BuildTopComplaint(
             int population,
             int averageHappiness,
-            float avgCrime,
-            float cityAvgCrimePerBuilding,
-            float avgGarbage,
-            float cityAvgGarbagePerBuilding)
+            int[] factorSum,
+            int[] factorCount)
         {
             string topText = null;
-            float topSeverity = float.NegativeInfinity;
+            int topWeight = 0;
 
-            void Consider(string text, float severity)
+            void Consider(string text, int weight)
             {
-                if (severity > topSeverity)
+                if (weight < topWeight)
                 {
-                    topSeverity = severity;
+                    topWeight = weight;
                     topText = text;
+                }
+            }
+
+            if (factorSum != null && factorCount != null)
+            {
+                for (int i = 0; i < factorSum.Length; i++)
+                {
+                    if (factorCount[i] <= 0)
+                    {
+                        continue;
+                    }
+                    Consider(FactorLabel((BuildingHappinessFactor)i), factorSum[i] / factorCount[i]);
                 }
             }
 
             if (population > 0 && averageHappiness < kLowHappinessThreshold)
             {
-                Consider("Low overall citizen happiness", kLowHappinessThreshold - averageHappiness);
-            }
-            if (avgCrime > 0f && cityAvgCrimePerBuilding > 0f && avgCrime > cityAvgCrimePerBuilding)
-            {
-                Consider("Crime reports above the city average", (avgCrime - cityAvgCrimePerBuilding) / cityAvgCrimePerBuilding * 100f);
-            }
-            if (avgGarbage > 0f && cityAvgGarbagePerBuilding > 0f && avgGarbage > cityAvgGarbagePerBuilding)
-            {
-                Consider("Garbage buildup above the city average", (avgGarbage - cityAvgGarbagePerBuilding) / cityAvgGarbagePerBuilding * 100f);
+                Consider("Low overall citizen happiness", averageHappiness - kLowHappinessThreshold);
             }
 
             var result = new List<string>();
@@ -481,6 +550,34 @@ namespace DistrictManager.Systems
                 result.Add(topText);
             }
             return result;
+        }
+
+        private static string FactorLabel(BuildingHappinessFactor factor)
+        {
+            switch (factor)
+            {
+                case BuildingHappinessFactor.Telecom: return "Poor telecom coverage";
+                case BuildingHappinessFactor.Crime: return "High crime";
+                case BuildingHappinessFactor.AirPollution: return "Air pollution";
+                case BuildingHappinessFactor.Electricity: return "Unreliable electricity";
+                case BuildingHappinessFactor.Healthcare: return "Poor healthcare access";
+                case BuildingHappinessFactor.GroundPollution: return "Ground pollution";
+                case BuildingHappinessFactor.NoisePollution: return "Noise pollution";
+                case BuildingHappinessFactor.Water: return "Unreliable water supply";
+                case BuildingHappinessFactor.WaterPollution: return "Water pollution";
+                case BuildingHappinessFactor.Sewage: return "Sewage issues";
+                case BuildingHappinessFactor.Garbage: return "Garbage buildup";
+                case BuildingHappinessFactor.Entertainment: return "Lack of entertainment";
+                case BuildingHappinessFactor.Education: return "Poor education access";
+                case BuildingHappinessFactor.Mail: return "Mail delivery issues";
+                case BuildingHappinessFactor.Welfare: return "Lack of welfare support";
+                case BuildingHappinessFactor.Leisure: return "Lack of leisure time";
+                case BuildingHappinessFactor.Tax: return "High taxes";
+                case BuildingHappinessFactor.Apartment: return "Cramped housing";
+                case BuildingHappinessFactor.ElectricityFee: return "High electricity fees";
+                case BuildingHappinessFactor.WaterFee: return "High water fees";
+                default: return factor.ToString();
+            }
         }
 
         private List<PolicyInfo> GatherDistrictPolicies(Entity district, NativeArray<Entity> policyPrefabEntities)
@@ -494,7 +591,6 @@ namespace DistrictManager.Systems
 
             foreach (var policyPrefabEntity in policyPrefabEntities)
             {
-                // reading straight off the component - PolicyPrefab is abstract, not worth resolving via PrefabSystem
                 if (!EntityManager.TryGetComponent<PolicyData>(policyPrefabEntity, out var policyData))
                 {
                     continue;
@@ -516,7 +612,6 @@ namespace DistrictManager.Systems
                     }
                 }
 
-                // Only show policies currently in effect - not every policy that could apply.
                 if (!active)
                 {
                     continue;
@@ -546,46 +641,6 @@ namespace DistrictManager.Systems
         {
             int value;
             return dict.TryGetValue(key, out value) ? value : 0;
-        }
-
-        private static float GetOrZero(Dictionary<Entity, float> dict, Entity key)
-        {
-            float value;
-            return dict.TryGetValue(key, out value) ? value : 0f;
-        }
-
-        private static float SafeAverage(float total, int count) => count > 0 ? total / count : 0f;
-
-        private static float SafeAverage(long total, int count) => count > 0 ? total / (float)count : 0f;
-
-        private static float SumAll(Dictionary<Entity, float> values)
-        {
-            float sum = 0f;
-            foreach (var value in values.Values)
-            {
-                sum += value;
-            }
-            return sum;
-        }
-
-        private static long SumAll(Dictionary<Entity, long> values)
-        {
-            long sum = 0;
-            foreach (var value in values.Values)
-            {
-                sum += value;
-            }
-            return sum;
-        }
-
-        private static int SumAll(Dictionary<Entity, int> values)
-        {
-            int sum = 0;
-            foreach (var value in values.Values)
-            {
-                sum += value;
-            }
-            return sum;
         }
 
         private static string HappinessLabel(int population, int averageHappiness)

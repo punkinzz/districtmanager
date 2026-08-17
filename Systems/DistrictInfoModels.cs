@@ -26,7 +26,6 @@ namespace DistrictManager.Systems
         }
     }
 
-    // name + entity so the UI can jump the camera to it
     public struct ServiceInfo : IJsonWritable
     {
         public string name;

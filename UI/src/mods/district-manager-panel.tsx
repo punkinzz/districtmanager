@@ -7,16 +7,12 @@ import styles from "./district-manager-panel.module.scss";
 import refreshIcon from "./icons/refresh.svg";
 import mapPinIcon from "./icons/map-pin.svg";
 
-// Must match DistrictOverviewUISystem.kGroup on the C# side.
 const GROUP = "districtManager";
 const DISTRICTS_POLL_MS = 2000;
 
 const panelOpen$ = bindValue<boolean>(GROUP, "panelOpen", false);
 const enabled$ = bindValue<boolean>(GROUP, "enabled", true);
 
-// polling instead of the usual useValue(bindValue(...)) pattern - the subscription sometimes
-// missed its first update right after a city loads and got stuck on "no districts". A fresh
-// bindValue() read each tick doesn't have that problem.
 function readDistrictsOnce(): DistrictInfo[] {
     const binding = bindValue<DistrictInfo[]>(GROUP, "districts", []);
     const value = binding.value;
@@ -55,8 +51,6 @@ interface ChipListRowProps {
     emptyText: string;
 }
 
-// wraps long lists as individual chips instead of one joined string that overflows the panel
-// (flex items don't wrap by default in this engine). clickable ones get a hover highlight.
 const ChipListRow = ({ label, items, emptyText }: ChipListRowProps) => (
     <div className={styles.chipListRow}>
         <div className={styles.chipListLabel}>{label}</div>
@@ -85,7 +79,6 @@ interface DistrictRowProps {
     onToggle: () => void;
 }
 
-// starts collapsed - click the header to expand
 const DistrictRow = ({ district, expanded, onToggle }: DistrictRowProps) => {
     const activePolicyNames = district.policies.map((p) => p.name);
 
@@ -164,7 +157,6 @@ export const DistrictManagerPanel = () => {
     const [rawDistricts, setRawDistricts] = useState<DistrictInfo[]>(() => readDistrictsOnce());
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // keyed by district entity index, absent/false = collapsed
     const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
     useEffect(() => {
@@ -189,8 +181,8 @@ export const DistrictManagerPanel = () => {
         }
         setIsRefreshing(true);
         trigger(GROUP, "refresh");
-        setTimeout(() => setRawDistricts(readDistrictsOnce()), 150); // give the C# recompute a moment to land
-        setTimeout(() => setIsRefreshing(false), 800); // hold the spinner a bit so it's visible
+        setTimeout(() => setRawDistricts(readDistrictsOnce()), 150);
+        setTimeout(() => setIsRefreshing(false), 800);
     };
 
     const toggleOne = (index: number) => {
@@ -209,7 +201,6 @@ export const DistrictManagerPanel = () => {
 
     return (
         <Portal>
-            {/* dimmed backdrop so this reads as a modal, not a docked tray */}
             <div className={styles.backdrop} onClick={close}>
                 <Panel
                     className={styles.modal}

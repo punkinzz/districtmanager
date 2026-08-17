@@ -1,5 +1,3 @@
-// Mirrors DistrictInfo/PolicyInfo in Systems/DistrictInfoModels.cs - keep these two in sync.
-
 export interface Entity {
     index: number;
     version: number;

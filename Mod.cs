@@ -11,7 +11,6 @@ namespace DistrictManager
     {
         public static ILog log = LogManager.GetLogger($"{nameof(DistrictManager)}.{nameof(Mod)}").SetShowsErrorsInUI(false);
 
-        // can be null briefly right after boot - null-check on the caller side
         public static Setting Instance { get; private set; }
 
         public void OnLoad(UpdateSystem updateSystem)
