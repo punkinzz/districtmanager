@@ -34,6 +34,10 @@ function happinessClassName(label: string): string {
             return styles.happinessAverage;
         case "Bad":
             return styles.happinessBad;
+        case "Terrible":
+            return styles.happinessTerrible;
+        case "No residents":
+            return styles.happinessNone;
         default:
             return styles.happinessTerrible;
     }
@@ -109,7 +113,8 @@ const DistrictRow = ({ district, expanded, onToggle }: DistrictRowProps) => {
                     }
                     right={
                         <span className={happinessClassName(district.happinessLabel)}>
-                            {district.happinessLabel} ({district.averageHappiness})
+                            {district.happinessLabel}
+                            {district.population > 0 ? ` (${district.averageHappiness})` : ""}
                         </span>
                     }
                 />

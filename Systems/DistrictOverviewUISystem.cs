@@ -428,7 +428,7 @@ namespace DistrictManager.Systems
                     name = m_NameSystem.GetRenderedLabelName(district),
                     population = population,
                     averageHappiness = averageHappiness,
-                    happinessLabel = HappinessLabel(averageHappiness),
+                    happinessLabel = HappinessLabel(population, averageHappiness),
                     policies = policies,
                     services = services,
                     assets = assets,
@@ -596,8 +596,9 @@ namespace DistrictManager.Systems
             return sum;
         }
 
-        private static string HappinessLabel(int averageHappiness)
+        private static string HappinessLabel(int population, int averageHappiness)
         {
+            if (population <= 0) return "No residents";
             if (averageHappiness >= 80) return "Great";
             if (averageHappiness >= 60) return "Good";
             if (averageHappiness >= 40) return "Average";
