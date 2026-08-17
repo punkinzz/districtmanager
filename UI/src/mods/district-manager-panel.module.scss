@@ -1,0 +1,223 @@
+// Note: this game's root font-size is set so that 1rem ~= 1px at the 1920-wide reference
+// resolution (confirmed live: html { font-size: 0.0520833vw } = 1px @ 1920px), NOT the browser
+// default of 1rem = 16px. Every rem value below is sized accordingly (i.e. as if it were px).
+
+.backdrop {
+    position: fixed;
+    // `inset` is not supported by this engine's CSS subset (confirmed: round-trips to an empty
+    // string) - it's silently dropped, which left `position: fixed` with no edges to anchor to.
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.55);
+    z-index: 1000;
+}
+
+.modal {
+    width: 800rem;
+    max-height: 80vh;
+}
+
+.scrollable {
+    max-height: 500rem;
+    width: 760rem;
+}
+
+.happinessGreat {
+    color: #7fd858;
+}
+
+.happinessGood {
+    color: #b7e07a;
+}
+
+.happinessAverage {
+    color: #e0d47a;
+}
+
+.happinessBad {
+    color: #e0a37a;
+}
+
+.happinessTerrible {
+    color: #e07a7a;
+}
+
+.complaint {
+    color: #e0a37a;
+}
+
+.emptyState {
+    padding: 16rem;
+    opacity: 0.7;
+}
+
+.expandCollapseRow {
+    display: flex;
+    align-items: center;
+    padding: 8rem 0;
+}
+
+.expandCollapseLink {
+    // `gap` is not supported by this engine's CSS subset (confirmed: round-trips to an empty
+    // string, same as `inset` above) - spacing is done with margin instead.
+    display: flex;
+    align-items: center;
+    margin-right: 24rem;
+    cursor: pointer;
+    opacity: 0.75;
+
+    &:hover {
+        opacity: 1;
+        text-decoration: underline;
+    }
+}
+
+.districtHeader {
+    cursor: pointer;
+}
+
+.headerLeft {
+    display: flex;
+    align-items: center;
+}
+
+.chevron {
+    display: inline-block;
+    // see the `gap` note above - margin instead of a row gap here too. On the left now since the
+    // chevron sits after the district name.
+    margin-left: 8rem;
+    font-size: 14rem;
+    transition: transform 0.15s ease;
+}
+
+.checkbox {
+    // Drawn with CSS rather than a unicode glyph (e.g. "\2610") - this game's font has no glyph
+    // for that character, so it silently fell back to a tiny placeholder box no matter the
+    // font-size set on it.
+    display: inline-block;
+    width: 14rem;
+    height: 14rem;
+    margin-right: 8rem;
+    // `currentcolor` doesn't exist in this engine - explicit color instead.
+    border: 2rem solid #d8dee2;
+    border-radius: 2rem;
+    opacity: 0.85;
+}
+
+.chevronExpanded {
+    transform: rotate(180deg);
+}
+
+.navigatePin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    // Same size as .chevron - kept as its own class since one's a font glyph and the other an
+    // <img>, so "same size" needs box dimensions here rather than font-size.
+    width: 14rem;
+    height: 14rem;
+    margin-left: 8rem;
+    cursor: pointer;
+    opacity: 0.75;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+.navigatePinIcon {
+    width: 100%;
+    height: 100%;
+}
+
+.toolbarRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16rem;
+}
+
+.refreshButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 4rem;
+    opacity: 0.75;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+.refreshIcon {
+    width: 18rem;
+    height: 18rem;
+}
+
+.refreshButtonActive {
+    background-color: rgba(122, 200, 255, 0.35);
+    border-radius: 4rem;
+    opacity: 1;
+}
+
+@keyframes districtManagerSpin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.refreshIconSpinning {
+    animation: districtManagerSpin 0.6s linear infinite;
+}
+
+.chipListRow {
+    display: flex;
+    align-items: flex-start;
+    padding: 6rem 16rem;
+}
+
+.chipListLabel {
+    flex-shrink: 0;
+    width: 110rem;
+    opacity: 0.85;
+}
+
+.chipListValues {
+    display: flex;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.chipListEmpty {
+    opacity: 0.85;
+}
+
+.chip {
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1rem solid rgba(255, 255, 255, 0.18);
+    border-radius: 4rem;
+    padding: 2rem 8rem;
+    // `gap` still isn't supported (see the note up top) - margin handles spacing between
+    // wrapped chips here too, on both axes since these can wrap onto multiple lines.
+    margin: 0 6rem 6rem 0;
+    font-size: 13rem;
+}
+
+.chipClickable {
+    cursor: pointer;
+    background-color: rgba(122, 200, 255, 0.12);
+    border-color: rgba(122, 200, 255, 0.35);
+
+    &:hover {
+        background-color: rgba(122, 200, 255, 0.25);
+    }
+}

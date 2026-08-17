@@ -1,0 +1,49 @@
+﻿<Publish>
+	<!--Id must be set in order to update existed mod. it is not required for publishing mod for the first time-->
+	<ModId Value="155583" />
+	<!--Name of the mod to display to players-->
+	<DisplayName Value="DistrictManager" />
+	<!--Short description of the mod-->
+	<ShortDescription Value="See every district's happiness, top complaint, assigned services, assets, and active policies at a glance" />
+	<!--Long description of the mod. Single line or multi line. Supports minimal markdown subset-->
+	<LongDescription>
+**District Manager** adds a map-pin button to the toolbar that opens a panel listing every district in your city, all in one place.
+
+For each district, at a glance:
+- **Population** and **average citizen happiness** (color-coded)
+- The single **biggest complaint** currently affecting that district
+- **Services** actually assigned to it - only buildings you've explicitly restricted to that district with the game's own "assign district" tool, not just anything physically nearby
+- **Assets** located in the district - parks and signature/landmark buildings
+- **Policies** currently active in that district
+
+Districts are listed alphabetically and start collapsed - expand one, or use Expand All / Collapse All. Click the pin next to a district name, or any service/asset chip, to jump the camera straight to it on the map. A manual refresh button forces an update on demand, and the mod can be toggled on/off any time from Options &gt; Mods &gt; District Manager.
+
+Read-only: it only displays existing city data and never changes how your city plays. Safe to add to or remove from an existing save at any time.
+	</LongDescription>
+	<!--Thumbnail-->
+	<Thumbnail Value="Properties/Thumbnail.png" />
+	<!--Screenshot, can be set multiple times-->
+	<Screenshot Value="Properties/Screenshot1.png" />
+	<Screenshot Value="Properties/Screenshot2.jpg" />
+	<Screenshot Value="Properties/Screenshot3.jpg" />
+	<!--Tag, can be set multiple times-->
+	<Tag Value="" />
+	<!--Link to the forum post where the mod can be discussed-->
+	<ForumLink Value="" />
+	<!--Version of the mod-->
+	<ModVersion Value="1.1" />
+	<!--Recommended version of the base game to use the mod-->
+	<GameVersion Value="1.6.*" />
+	<!--Dependency for the mod, can be set multiple times-->
+	<Dependency Id="" />
+	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
+	<RequiredDLC Value="" />
+	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
+	<ChangeLog Value="Added expanded and collapsed screenshots to the mod page." />
+	<!--<ChangeLog>
+	</ChangeLog>-->
+	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme"-->
+	<ExternalLink Type="" Url="" />
+	<!--Supported values Public, Private, Unlisted-->
+	<AccessLevel Value="Public" />
+</Publish>

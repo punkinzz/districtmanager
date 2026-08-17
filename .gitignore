@@ -1,0 +1,13 @@
+# .NET build output
+bin/
+obj/
+Library/
+
+# Node / webpack (UI)
+UI/node_modules/
+UI/dist/
+
+# IDE / OS
+.vs/
+*.user
+Thumbs.db
