@@ -419,7 +419,7 @@ namespace DistrictManager.Systems
                 float avgCrime = SafeAverage(GetOrZero(crimeSum, district), buildings);
                 float avgGarbage = SafeAverage(GetOrZero(garbageSum, district), buildings);
 
-                var complaints = BuildTopComplaint(population, averageHappiness, services.Count, avgCrime,
+                var complaints = BuildTopComplaint(population, averageHappiness, avgCrime,
                     cityAvgCrimePerBuilding, avgGarbage, cityAvgGarbagePerBuilding);
 
                 m_Districts.Add(new DistrictInfo
@@ -440,15 +440,11 @@ namespace DistrictManager.Systems
             districtEntities.Dispose();
         }
 
-        // eyeballed baseline so "no services" can be ranked against the other complaint types below
-        private const float kNoServicesSeverity = 20f;
-
         // only the single worst complaint is shown, scored on a rough comparable scale even
-        // though the units differ (happiness gap, % above city average, fixed baseline)
+        // though the units differ (happiness gap, % above city average)
         private static List<string> BuildTopComplaint(
             int population,
             int averageHappiness,
-            int serviceCount,
             float avgCrime,
             float cityAvgCrimePerBuilding,
             float avgGarbage,
@@ -469,10 +465,6 @@ namespace DistrictManager.Systems
             if (population > 0 && averageHappiness < kLowHappinessThreshold)
             {
                 Consider("Low overall citizen happiness", kLowHappinessThreshold - averageHappiness);
-            }
-            if (serviceCount == 0)
-            {
-                Consider("No city services located in this district", kNoServicesSeverity);
             }
             if (avgCrime > 0f && cityAvgCrimePerBuilding > 0f && avgCrime > cityAvgCrimePerBuilding)
             {

@@ -65,17 +65,20 @@
     padding: 8rem 0;
 }
 
-.expandCollapseLink {
-    // no gap support, margin instead
-    display: flex;
+.expandCollapseButton {
+    display: inline-flex;
     align-items: center;
-    margin-right: 24rem;
+    margin-right: 8rem; // no gap support
+    padding: 4rem 10rem;
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1rem solid rgba(255, 255, 255, 0.18);
+    border-radius: 4rem;
     cursor: pointer;
-    opacity: 0.75;
+    opacity: 0.85;
 
     &:hover {
         opacity: 1;
-        text-decoration: underline;
+        background-color: rgba(255, 255, 255, 0.14);
     }
 }
 
@@ -93,17 +96,6 @@
     margin-left: 8rem;
     font-size: 14rem;
     transition: transform 0.15s ease;
-}
-
-.checkbox {
-    // CSS box instead of a unicode glyph - the game's font doesn't have one, just renders tiny
-    display: inline-block;
-    width: 14rem;
-    height: 14rem;
-    margin-right: 8rem;
-    border: 2rem solid #d8dee2; // currentcolor isn't a thing here
-    border-radius: 2rem;
-    opacity: 0.85;
 }
 
 .chevronExpanded {

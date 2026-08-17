@@ -220,12 +220,10 @@ export const DistrictManagerPanel = () => {
                     <div className={styles.toolbarRow}>
                         {districts.length > 0 && (
                             <div className={styles.expandCollapseRow}>
-                                <span className={styles.expandCollapseLink} onClick={expandAll}>
-                                    <span className={styles.checkbox} />
+                                <span className={styles.expandCollapseButton} onClick={expandAll}>
                                     Expand all
                                 </span>
-                                <span className={styles.expandCollapseLink} onClick={collapseAll}>
-                                    <span className={styles.checkbox} />
+                                <span className={styles.expandCollapseButton} onClick={collapseAll}>
                                     Collapse all
                                 </span>
                             </div>
